@@ -471,11 +471,17 @@ function showResults(results) {
   const score = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length);
   lastScore = score;
   const verdict = VERDICTS.find((v) => score >= v.min);
+  const baseline = readBaseline();
+  const reference = baseline === null ? 100 : Math.max(1, baseline);
+  const estimatedRate = clamp(((reference - score) / reference) * 2.5, 0, 2.5);
 
   $("#verdict-emoji").textContent = verdict.emoji;
   $("#verdict-title").textContent = verdict.title;
   $("#verdict-text").textContent = verdict.text;
-  $("#fake-rate").textContent = `${(((100 - score) / 100) * 2.5).toFixed(2).replace(".", ",")} g/L`;
+  $("#fake-rate").textContent = `${estimatedRate.toFixed(2).replace(".", ",")} g/L (fictifs)`;
+  $("#rate-explanation").textContent = baseline === null
+    ? "Échelle de jeu de 0 à 2,5, calculée à partir du score moyen de tes réponses (0–100). Enregistre une référence à jeun pour personnaliser la comparaison."
+    : `Échelle de jeu de 0 à 2,5, calculée à partir de l'écart entre ton score (${score}/100) et ta référence à jeun (${baseline}/100).`;
 
   // Animation du compteur
   const scoreEl = $("#score-value");
