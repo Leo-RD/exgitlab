@@ -1,0 +1,15 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Les fichiers du site existent
+        run: test -f index.html && test -f style.css && test -f script.js
+
+      - name: Le JavaScript n'a pas d'erreur de syntaxe
+        run: node --check script.js
