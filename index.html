@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alcoo'Quiz — Es-tu (encore) frais ?</title>
+  <title>Alcoo'Quiz — Test de pureté</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
@@ -16,36 +17,36 @@
         <div class="progress-bar" id="progress-bar"></div>
       </div>
     </header>
-
+ 
     <!-- Écran d'accueil -->
     <section class="screen active" id="screen-intro">
       <div class="card">
-        <div class="big-emoji">🥴</div>
-        <h2>Es-tu (encore) frais ?</h2>
+        <div class="big-emoji">😇</div>
+        <h2>Test de pureté : version alcool</h2>
         <p>
-          Six mini-épreuves pour mesurer tes réflexes, ta coordination et ta concentration.
+          Des questions générales, des lendemains difficiles, des confidences intimes…
+          Réponds honnêtement par « oui » ou « non » : chaque « oui » te fait perdre des points de pureté.
           À la fin, un verdict implacable (et totalement non scientifique).
         </p>
         <ol class="test-list">
-          <li><span>⚡</span> Réflexes</li>
-          <li><span>🎨</span> Couleurs piégées</li>
-          <li><span>🧮</span> Calcul mental</li>
-          <li><span>🧠</span> Mémoire</li>
-          <li><span>🎯</span> Main stable</li>
-          <li><span>👅</span> Virelangue au clavier</li>
+          <li><span>🍻</span> Soirées &amp; général</li>
+          <li><span>🤢</span> Excès &amp; lendemains</li>
+          <li><span>💋</span> Côté intime</li>
+          <li><span>🚨</span> Limites &amp; risques</li>
         </ol>
         <p class="tip">
-          💡 Astuce : fais le test à jeun une première fois et enregistre ton score comme référence.
+          💡 Anonyme : tes réponses restent dans ton navigateur et ne sont envoyées nulle part.
+          Tu peux faire le test entre amis et comparer vos scores.
         </p>
         <label class="promise">
           <input type="checkbox" id="promise-check">
-          Je jure solennellement de ne pas prendre le volant, quel que soit le résultat.
+          J’ai 18 ans ou plus et je sais que ce test est un jeu, pas une évaluation médicale.
         </label>
         <button class="btn btn-primary" id="start-btn" disabled>Commencer le test</button>
       </div>
     </section>
-
-    <!-- Écran des épreuves -->
+ 
+    <!-- Écran des questions -->
     <section class="screen" id="screen-test">
       <div class="card">
         <div class="test-head">
@@ -53,45 +54,60 @@
           <h2 id="test-title"></h2>
           <p id="test-instructions"></p>
         </div>
-        <div class="stage" id="stage"></div>
+        <div class="stage" id="stage">
+          <p class="question" id="question-text"></p>
+          <div class="answer-buttons">
+            <button class="btn btn-yes" id="yes-btn">Oui 🙈</button>
+            <button class="btn btn-no" id="no-btn">Non 😇</button>
+          </div>
+          <button class="btn btn-link" id="back-btn">← Question précédente</button>
+        </div>
       </div>
     </section>
-
+ 
     <!-- Écran de résultat -->
     <section class="screen" id="screen-result">
       <div class="card result-card" id="result-card">
         <div class="big-emoji" id="verdict-emoji"></div>
         <h2 id="verdict-title"></h2>
         <p id="verdict-text"></p>
-
+ 
         <div class="score-block">
           <div class="score-number"><span id="score-value">0</span><small>/100</small></div>
           <div class="gauge">
             <div class="gauge-fill" id="gauge-fill"></div>
           </div>
-          <div class="gauge-labels"><span>Sobre</span><span>Pompette</span><span>K.O.</span></div>
-          <p class="fake-rate">Taux estimé <em>(100 % fantaisiste)</em> : <strong id="fake-rate"></strong></p>
+          <div class="gauge-labels"><span>Pur·e</span><span>Fêtard·e</span><span>Légende</span></div>
+          <p class="fake-rate"><strong id="yes-count"></strong> <em>(score 100 % fantaisiste)</em></p>
         </div>
-
-        <h3>Détail des épreuves</h3>
+ 
+        <div class="help-box" id="help-box" hidden>
+          Plusieurs de tes réponses concernent des situations à risque. Si tu t’y reconnais ou si tu t’inquiètes
+          pour ta consommation, tu peux en parler gratuitement et anonymement à
+          <strong>Alcool Info Service : 0 980 980 930</strong> (7j/7, de 8h à 2h).
+        </div>
+ 
+        <h3>Détail par catégorie</h3>
         <ul class="breakdown" id="breakdown"></ul>
-
+ 
         <div class="baseline" id="baseline-info"></div>
-
+ 
         <div class="actions">
-          <button class="btn btn-secondary" id="save-baseline-btn">Enregistrer comme référence à jeun</button>
+          <button class="btn btn-secondary" id="save-baseline-btn">Enregistrer ce score</button>
           <button class="btn btn-primary" id="restart-btn">Recommencer</button>
         </div>
       </div>
     </section>
-
+ 
     <footer class="disclaimer">
-      ⚠️ Ce quiz est un jeu, pas un éthylotest. Il ne mesure pas ton taux d'alcool.
-      En France, la limite légale est de 0,5 g/L de sang (0,2 g/L pour les jeunes conducteurs).
+      ⚠️ Ce quiz est un jeu : il ne mesure pas ton taux d'alcool et ne remplace pas un avis médical.
+      L’abus d’alcool est dangereux pour la santé, à consommer avec modération.
+      En France, la limite légale pour conduire est de 0,5 g/L de sang (0,2 g/L pour les jeunes conducteurs).
       Si tu as bu, tu ne conduis pas.
     </footer>
   </main>
-
+ 
   <script src="script.js"></script>
 </body>
 </html>
+ 

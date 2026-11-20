@@ -1,418 +1,119 @@
-/* ==========================================================
-   Alcoo'Quiz — logique du quiz
-   Chaque épreuve renvoie un score de 0 (K.O.) à 100 (sobre).
-   ========================================================== */
 
+/* ==========================================================
+   Alcoo'Quiz — Test de pureté (alcool)
+   Chaque « oui » retire 1 point de pureté sur le total des
+   questions. Score final : 100 = pur·e, 0 = légende des bars.
+   ========================================================== */
+ 
 // ---------- Utilitaires ----------
 const $ = (selector) => document.querySelector(selector);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-const pick = (array) => array[Math.floor(Math.random() * array.length)];
-const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-
-/**
- * Convertit une mesure en score 0-100.
- * `best` donne 100, `worst` donne 0, interpolation linéaire entre les deux.
- * Fonctionne dans les deux sens (temps : plus petit = mieux, % : plus grand = mieux).
- */
-function scale(value, best, worst) {
-  return clamp((worst - value) / (worst - best), 0, 1) * 100;
-}
-
-/** Distance de Levenshtein : nombre de modifications pour passer de a à b. */
-function levenshtein(a, b) {
-  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
-  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
-    }
-  }
-  return dp[a.length][b.length];
-}
-
-/** Attend que l'utilisateur clique sur un bouton "C'est parti". */
-function waitForGo(stage, label = "C'est parti !") {
-  return new Promise((resolve) => {
-    stage.innerHTML = `<button class="btn btn-primary">${label}</button>`;
-    stage.querySelector("button").addEventListener("click", resolve, { once: true });
-  });
-}
-
-/** Affiche un champ de réponse et renvoie { value, time } à la validation. */
-function askAnswer(container, { placeholder = "Ta réponse", numeric = true } = {}) {
-  return new Promise((resolve) => {
-    const form = document.createElement("form");
-    form.className = "answer-form";
-    form.innerHTML = `
-      <input type="text" ${numeric ? 'inputmode="numeric"' : ""} autocomplete="off" placeholder="${placeholder}">
-      <button class="btn btn-primary" type="submit">OK</button>`;
-    container.appendChild(form);
-    const input = form.querySelector("input");
-    input.focus();
-    const start = performance.now();
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (input.value.trim() === "") return;
-      resolve({ value: input.value.trim(), time: performance.now() - start });
-    });
-  });
-}
-
+ 
 // ==========================================================
-// Les épreuves
+// Les questions, classées par catégorie
 // ==========================================================
-
-/* ---------- 1. Réflexes ---------- */
-const reflexTest = {
-  title: "⚡ Réflexes",
-  instructions: "Clique (ou tape) sur la zone dès qu'elle devient verte. Pas avant, petit malin !",
-  async run(stage) {
-    const rounds = 3;
-    const times = [];
-    let falseStarts = 0;
-
-    for (let i = 0; i < rounds; i++) {
-      const result = await this.round(stage, i + 1, rounds);
-      if (result === null) {
-        falseStarts++;
-        times.push(1000); // pénalité
-      } else {
-        times.push(result);
-      }
-    }
-
-    const avg = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
-    return {
-      score: scale(avg, 250, 650),
-      detail: `Temps moyen : ${avg} ms${falseStarts ? ` · ${falseStarts} faux départ(s)` : ""}`,
-    };
+const CATEGORIES = [
+  {
+    id: "general",
+    emoji: "🍻",
+    title: "Soirées & général",
+    intro: "Pour commencer en douceur : tes premières fois et tes habitudes de soirée.",
+    questions: [
+      "As-tu déjà bu de l’alcool avant tes 16 ans ?",
+      "As-tu déjà été ivre ?",
+      "As-tu déjà fait un cul sec ?",
+      "As-tu déjà mélangé plusieurs alcools « pour voir » ?",
+      "As-tu déjà participé à un jeu à boire (beer-pong, cartes, « je n’ai jamais »…) ?",
+      "As-tu déjà bu un alcool fort pur (vodka, whisky, rhum…) cul sec ou en shot ?",
+      "As-tu déjà bu seul(e) chez toi, sans aucune occasion particulière ?",
+      "As-tu déjà bu de l’alcool avant midi ?",
+      "As-tu déjà bu de l’alcool en cours, en formation ou au travail ?",
+      "As-tu déjà acheté de l’alcool alors que tu étais mineur(e) ?",
+      "As-tu déjà bu plus de cinq verres en une seule soirée ?",
+      "As-tu déjà relevé un défi alcool sur un coup de tête ?",
+    ],
   },
-
-  round(stage, n, total) {
-    return new Promise((resolve) => {
-      stage.innerHTML = `
-        <p class="round-info">Essai ${n} / ${total}</p>
-        <div class="reflex-pad wait">Attends le vert…</div>`;
-      const pad = stage.querySelector(".reflex-pad");
-      let start = null;
-
-      const timer = setTimeout(() => {
-        pad.className = "reflex-pad go";
-        pad.textContent = "CLIQUE !";
-        start = performance.now();
-      }, randInt(1500, 4000));
-
-      pad.addEventListener("pointerdown", async () => {
-        if (start === null) {
-          clearTimeout(timer);
-          pad.className = "reflex-pad early";
-          pad.textContent = "Trop tôt ! 🙃 Pénalité.";
-          await sleep(1200);
-          resolve(null);
-        } else {
-          const t = Math.round(performance.now() - start);
-          pad.textContent = `${t} ms`;
-          await sleep(900);
-          resolve(t);
-        }
-      }, { once: true });
-    });
+  {
+    id: "exces",
+    emoji: "🤢",
+    title: "Excès & lendemains",
+    intro: "Quand la soirée a (un peu) dérapé et que le réveil est difficile.",
+    questions: [
+      "As-tu déjà vomi à cause de l’alcool ?",
+      "As-tu déjà eu un trou noir (un moment dont tu ne te souviens plus du tout) ?",
+      "As-tu déjà dormi dans un endroit improbable (voiture, toilettes, canapé d’un inconnu…) ?",
+      "As-tu déjà raté un cours ou une journée de travail à cause d’une gueule de bois ?",
+      "As-tu déjà perdu ton téléphone, tes clés ou ton portefeuille en soirée ?",
+      "As-tu déjà dépensé bien plus que prévu au bar ?",
+      "As-tu déjà juré de ne plus jamais boire… et recommencé la semaine suivante ?",
+      "As-tu déjà pleuré en soirée sans vraie raison ?",
+      "As-tu déjà chanté ou dansé en public dans un état que tu regrettes aujourd’hui ?",
+      "As-tu déjà commandé un kebab ou une pizza à 3 h du matin ?",
+      "As-tu déjà eu une gueule de bois qui a duré plus de 24 heures ?",
+      "As-tu déjà dû être pris(e) en charge par des secours ou un médecin après avoir trop bu ?",
+    ],
   },
-};
-
-/* ---------- 2. Couleurs piégées (effet Stroop) ---------- */
-const COLORS = [
-  { name: "ROUGE", hex: "#ef4444" },
-  { name: "BLEU", hex: "#3b82f6" },
-  { name: "VERT", hex: "#22c55e" },
-  { name: "JAUNE", hex: "#eab308" },
-  { name: "VIOLET", hex: "#a855f7" },
+  {
+    id: "intime",
+    emoji: "💋",
+    title: "Côté intime",
+    intro: "Les confidences de fin de soirée. Rassure-toi : personne ne regarde ton écran.",
+    questions: [
+      "As-tu déjà envoyé un message à ton ex en étant ivre ?",
+      "As-tu déjà envoyé un texto, un vocal ou un snap que tu as regretté le lendemain ?",
+      "As-tu déjà embrassé quelqu’un que tu venais de rencontrer pendant une soirée ?",
+      "As-tu déjà embrassé quelqu’un en soirée et regretté dès le lendemain ?",
+      "As-tu déjà terminé la soirée avec quelqu’un que tu n’aurais jamais regardé en étant sobre ?",
+      "As-tu déjà dragué un(e) ami(e), un(e) collègue ou un(e) camarade en étant éméché(e) ?",
+      "As-tu déjà avoué tes sentiments à quelqu’un après quelques verres ?",
+      "As-tu déjà passé la nuit chez quelqu’un à l’issue d’une soirée bien arrosée ?",
+      "As-tu déjà couché avec quelqu’un après avoir bu ?",
+      "T’es-tu déjà réveillé(e) à côté de quelqu’un sans trop savoir comment tu en étais arrivé là ?",
+      "T’es-tu déjà retrouvé(e) en sous-vêtements ou nu(e) en public à cause de l’alcool (baignade, défi, pari…) ?",
+      "As-tu déjà fait une scène de jalousie ou une dispute avec ton/ta partenaire à cause de l’alcool ?",
+    ],
+  },
+  {
+    id: "risques",
+    emoji: "🚨",
+    title: "Limites & risques",
+    intro: "Les questions sérieuses sous le vernis rigolo. Réponds franchement, c’est pour toi.",
+    questions: [
+      "As-tu déjà conduit (voiture, moto, scooter, vélo, trottinette) après avoir bu ?",
+      "Es-tu déjà monté(e) dans la voiture d’un conducteur qui avait trop bu ?",
+      "As-tu déjà mélangé de l’alcool avec des médicaments ou d’autres substances ?",
+      "As-tu déjà laissé ton verre sans surveillance en soirée ?",
+      "As-tu déjà bu plus de dix verres en une seule soirée ?",
+      "As-tu déjà été ramené(e) chez toi parce que tu ne pouvais plus tenir debout ?",
+      "As-tu déjà bu pour « oublier » un problème ou te donner du courage ?",
+      "Un proche t’a-t-il déjà fait remarquer qu’il s’inquiétait de ta consommation ?",
+      "As-tu déjà bu pendant plusieurs jours d’affilée ?",
+      "T’es-tu déjà brouillé(e) avec un(e) ami(e) ou un proche à cause de l’alcool ?",
+    ],
+  },
 ];
-
-const stroopTest = {
-  title: "🎨 Couleurs piégées",
-  instructions: "Clique sur la COULEUR dans laquelle le mot est écrit, pas sur le mot lui-même. Le cerveau adore se tromper.",
-  async run(stage) {
-    const rounds = 8;
-    let correct = 0;
-    let totalTime = 0;
-
-    for (let i = 0; i < rounds; i++) {
-      const word = pick(COLORS);
-      const ink = pick(COLORS.filter((c) => c !== word));
-
-      stage.innerHTML = `
-        <p class="round-info">${i + 1} / ${rounds}</p>
-        <div class="stroop-word" style="color:${ink.hex}">${word.name}</div>
-        <div class="stroop-buttons">
-          ${COLORS.map((c) => `<button class="btn" data-name="${c.name}">${c.name.toLowerCase()}</button>`).join("")}
-        </div>
-        <p class="feedback"></p>`;
-
-      const start = performance.now();
-      const chosen = await new Promise((resolve) => {
-        stage.querySelectorAll(".stroop-buttons .btn").forEach((btn) =>
-          btn.addEventListener("click", () => resolve(btn.dataset.name), { once: true })
-        );
-      });
-      totalTime += performance.now() - start;
-
-      const ok = chosen === ink.name;
-      if (ok) correct++;
-      const fb = stage.querySelector(".feedback");
-      fb.textContent = ok ? "Bien vu ✔" : `Raté ✘ (c'était ${ink.name.toLowerCase()})`;
-      fb.className = `feedback ${ok ? "ok" : "ko"}`;
-      await sleep(600);
-    }
-
-    const avgTime = totalTime / rounds;
-    const score = (correct / rounds) * 70 + scale(avgTime, 900, 3000) * 0.3;
-    return {
-      score,
-      detail: `${correct}/${rounds} bonnes réponses · ${(avgTime / 1000).toFixed(1)} s par mot`,
-    };
-  },
-};
-
-/* ---------- 3. Calcul mental ---------- */
-const mathTest = {
-  title: "🧮 Calcul mental",
-  instructions: "Quatre petits calculs. Réponds juste et vite. Les doigts sont interdits.",
-  generate() {
-    const a = randInt(17, 49), b = randInt(12, 48);
-    const c = randInt(3, 9), d = randInt(6, 12);
-    const e = randInt(50, 99), f = randInt(11, 49);
-    const g = randInt(2, 5), h = randInt(3, 9), k = randInt(1, 9);
-    return [
-      { q: `${a} + ${b}`, a: a + b },
-      { q: `${c} × ${d}`, a: c * d },
-      { q: `${e} − ${f}`, a: e - f },
-      { q: `${g} × ${h} + ${k}`, a: g * h + k },
-    ];
-  },
-  async run(stage) {
-    const questions = this.generate();
-    let total = 0;
-    let correct = 0;
-
-    for (let i = 0; i < questions.length; i++) {
-      const { q, a } = questions[i];
-      stage.innerHTML = `
-        <p class="round-info">Calcul ${i + 1} / ${questions.length}</p>
-        <div class="big-question">${q} = ?</div>`;
-      const { value, time } = await askAnswer(stage);
-
-      const ok = Number(value.replace(",", ".")) === a;
-      if (ok) {
-        correct++;
-        total += 50 + scale(time, 4000, 15000) * 0.5;
-      }
-      const fb = document.createElement("p");
-      fb.className = `feedback ${ok ? "ok" : "ko"}`;
-      fb.textContent = ok ? "Exact ✔" : `Faux ✘ (réponse : ${a})`;
-      stage.appendChild(fb);
-      stage.querySelector("input").disabled = true;
-      await sleep(900);
-    }
-
-    return {
-      score: total / questions.length,
-      detail: `${correct}/${questions.length} calculs justes`,
-    };
-  },
-};
-
-/* ---------- 4. Mémoire ---------- */
-const memoryTest = {
-  title: "🧠 Mémoire",
-  instructions: "Une suite de chiffres va s'afficher quelques secondes. Mémorise-la puis retape-la.",
-  async run(stage) {
-    const lengths = [5, 7];
-    let ratioSum = 0;
-    const results = [];
-
-    for (let r = 0; r < lengths.length; r++) {
-      const len = lengths[r];
-      const digits = Array.from({ length: len }, () => randInt(0, 9)).join("");
-
-      stage.innerHTML = `
-        <p class="round-info">Série ${r + 1} / ${lengths.length} — mémorise !</p>
-        <div class="memory-digits">${digits}</div>`;
-      await sleep(2500 + len * 150);
-
-      stage.innerHTML = `
-        <p class="round-info">Série ${r + 1} / ${lengths.length}</p>
-        <div class="big-question">C'était quoi déjà ? 🤔</div>`;
-      const { value } = await askAnswer(stage, { placeholder: `${len} chiffres` });
-
-      const answer = value.replace(/\D/g, "");
-      let matches = 0;
-      for (let i = 0; i < len; i++) if (answer[i] === digits[i]) matches++;
-      ratioSum += matches / len;
-      results.push(`${matches}/${len}`);
-
-      const fb = document.createElement("p");
-      fb.className = `feedback ${matches === len ? "ok" : "ko"}`;
-      fb.textContent = matches === len ? "Parfait ✔" : `C'était ${digits}`;
-      stage.appendChild(fb);
-      stage.querySelector("input").disabled = true;
-      await sleep(1200);
-    }
-
-    return {
-      score: (ratioSum / lengths.length) * 100,
-      detail: `Chiffres bien placés : ${results.join(" puis ")}`,
-    };
-  },
-};
-
-/* ---------- 5. Main stable ---------- */
-const steadyTest = {
-  title: "🎯 Main stable",
-  instructions: "Place ton curseur (ou ton doigt) sur la cible puis suis-la pendant 7 secondes sans en sortir.",
-  duration: 7000,
-  radius: 38,
-  run(stage) {
-    return new Promise((resolve) => {
-      stage.innerHTML = `
-        <div class="steady-arena">
-          <div class="steady-target"></div>
-          <div class="steady-msg">Pose ton curseur sur la cible pour démarrer</div>
-        </div>`;
-      const arena = stage.querySelector(".steady-arena");
-      const target = stage.querySelector(".steady-target");
-      const msg = stage.querySelector(".steady-msg");
-
-      const pointer = { x: -999, y: -999 };
-      const pos = { x: 0, y: 0 };
-      let started = false;
-      let startTime = 0;
-      let framesIn = 0;
-      let framesTotal = 0;
-
-      const isInside = () => Math.hypot(pointer.x - pos.x, pointer.y - pos.y) <= this.radius;
-
-      const placeTarget = (elapsed) => {
-        const w = arena.clientWidth;
-        const h = arena.clientHeight;
-        const t = elapsed / 1000;
-        // Trajectoire de Lissajous qui accélère doucement
-        const speed = 1 + t * 0.12;
-        pos.x = w / 2 + (w / 2 - 50) * Math.sin(t * 1.1 * speed);
-        pos.y = h / 2 + (h / 2 - 50) * Math.sin(t * 1.7 * speed + 0.6);
-        target.style.left = `${pos.x}px`;
-        target.style.top = `${pos.y}px`;
-      };
-
-      const onMove = (e) => {
-        const rect = arena.getBoundingClientRect();
-        pointer.x = e.clientX - rect.left;
-        pointer.y = e.clientY - rect.top;
-        if (!started && isInside()) begin();
-      };
-
-      const begin = () => {
-        started = true;
-        startTime = performance.now();
-        requestAnimationFrame(loop);
-      };
-
-      const loop = (now) => {
-        const elapsed = now - startTime;
-        placeTarget(elapsed);
-        framesTotal++;
-        const inside = isInside();
-        if (inside) framesIn++;
-        target.className = `steady-target ${inside ? "inside" : "outside"}`;
-        msg.textContent = `${Math.ceil((this.duration - elapsed) / 1000)} s`;
-
-        if (elapsed < this.duration) {
-          requestAnimationFrame(loop);
-        } else {
-          arena.removeEventListener("pointermove", onMove);
-          arena.removeEventListener("pointerdown", onMove);
-          const ratio = framesIn / Math.max(1, framesTotal);
-          msg.textContent = `Terminé ! ${Math.round(ratio * 100)} % du temps sur la cible`;
-          setTimeout(() => resolve({
-            score: scale(ratio, 0.9, 0.3),
-            detail: `${Math.round(ratio * 100)} % du temps sur la cible`,
-          }), 1300);
-        }
-      };
-
-      arena.addEventListener("pointermove", onMove);
-      arena.addEventListener("pointerdown", onMove);
-      placeTarget(0);
-    });
-  },
-};
-
-/* ---------- 6. Virelangue au clavier ---------- */
-const TWISTERS = [
-  "Les chaussettes de l'archiduchesse sont-elles sèches, archi-sèches ?",
-  "Un chasseur sachant chasser doit savoir chasser sans son chien.",
-  "Si six scies scient six cyprès, six cent six scies scient six cent six cyprès.",
-  "Panier, piano, panier, piano, panier, piano.",
-  "Ton thé t'a-t-il ôté ta toux ?",
-];
-
-const typingTest = {
-  title: "👅 Virelangue au clavier",
-  instructions: "Recopie la phrase le plus fidèlement et le plus vite possible. Le copier-coller est désactivé, évidemment.",
-  normalize: (s) => s.toLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, " ").trim(),
-  run(stage) {
-    return new Promise((resolve) => {
-      const phrase = pick(TWISTERS);
-      stage.innerHTML = `
-        <div class="tongue-twister">${phrase}</div>
-        <textarea class="typing-area" placeholder="Tape ici…" spellcheck="false" autocomplete="off"></textarea>
-        <button class="btn btn-primary">Valider</button>`;
-      const area = stage.querySelector("textarea");
-      const btn = stage.querySelector("button");
-      let start = null;
-
-      area.focus();
-      area.addEventListener("paste", (e) => e.preventDefault());
-      area.addEventListener("input", () => { if (start === null) start = performance.now(); });
-      area.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); btn.click(); }
-      });
-
-      btn.addEventListener("click", () => {
-        if (start === null) return;
-        const time = performance.now() - start;
-        const target = this.normalize(phrase);
-        const typed = this.normalize(area.value);
-        const distance = levenshtein(target, typed);
-        const similarity = Math.max(0, 1 - distance / target.length);
-        const msPerChar = time / target.length;
-
-        resolve({
-          score: similarity * 85 + scale(msPerChar, 180, 700) * 0.15,
-          detail: `Précision ${Math.round(similarity * 100)} % · ${distance} faute(s) · ${(time / 1000).toFixed(1)} s`,
-        });
-      });
-    });
-  },
-};
-
-const TESTS = [reflexTest, stroopTest, mathTest, memoryTest, steadyTest, typingTest];
-
+ 
+// Liste à plat : chaque question connaît sa catégorie
+const QUESTIONS = CATEGORIES.flatMap((cat, catIndex) =>
+  cat.questions.map((text) => ({ text, catIndex }))
+);
+ 
 // ==========================================================
-// Verdicts
+// Verdicts (selon le score de pureté, 100 = pur·e)
 // ==========================================================
 const VERDICTS = [
-  { min: 85, emoji: "🐪", title: "Sobre comme un chameau", text: "Réflexes affûtés, mémoire d'éléphant. Soit tu n'as rien bu, soit tu es un cas d'étude." },
-  { min: 70, emoji: "🍷", title: "Légèrement pompette", text: "Quelques petites hésitations… Rien de grave, mais un grand verre d'eau ne ferait pas de mal." },
-  { min: 50, emoji: "🥴", title: "Joyeusement éméché", text: "Le cerveau répond, mais avec un léger décalage. Tu racontes probablement les mêmes blagues en boucle." },
-  { min: 30, emoji: "🍻", title: "Rond comme une queue de pelle", text: "Tes neurones font la chenille. Il est temps de passer à l'eau et de commander un taxi." },
-  { min: 0,  emoji: "🛸", title: "En orbite", text: "Tu parles probablement aux lampadaires. Au lit, et ton téléphone reste dans ta poche !" },
+  { min: 90, emoji: "😇", title: "Pur(e) comme l’eau de source", text: "Soit tu es un ange, soit tu as menti sur au moins deux questions. Dans les deux cas, bravo." },
+  { min: 75, emoji: "🙂", title: "Presque innocent(e)", text: "Quelques écarts de jeunesse, mais rien qui ne tienne dans un verre de limonade." },
+  { min: 55, emoji: "🍷", title: "Fêtard(e) raisonnable", text: "Tu as vécu quelques belles soirées, et tu en gardes quelques anecdotes… et quelques regrets." },
+  { min: 35, emoji: "🥴", title: "Habitué(e) des comptoirs", text: "Le barman connaît ton prénom. Tes amis connaissent tes histoires. Et ton téléphone garde des preuves." },
+  { min: 15, emoji: "🍻", title: "Légende des soirées", text: "Tu as vu des choses que même un sommelier n’oserait pas raconter. Pense à t’hydrater." },
+  { min: 0,  emoji: "🛸", title: "Dossier hors catégorie", text: "Ton foie demande une médiation. Un grand verre d’eau et une longue nuit de sommeil s’imposent." },
 ];
-
-const BASELINE_KEY = "alcooquiz-baseline";
-
+ 
+// ==========================================================
+// Stockage du dernier score (localStorage, facultatif)
+// ==========================================================
+const BASELINE_KEY = "alcooquiz-purete-score";
+ 
 function readBaseline() {
   try {
     const v = localStorage.getItem(BASELINE_KEY);
@@ -421,7 +122,7 @@ function readBaseline() {
     return null;
   }
 }
-
+ 
 function writeBaseline(score) {
   try {
     localStorage.setItem(BASELINE_KEY, String(score));
@@ -430,53 +131,72 @@ function writeBaseline(score) {
     return false;
   }
 }
-
+ 
 // ==========================================================
 // Déroulement du quiz
 // ==========================================================
+let answers = [];       // tableau de booléens (true = « oui »)
+let current = 0;
 let lastScore = 0;
-
+ 
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   $(`#${id}`).classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-
+ 
 function setProgress(done) {
-  $("#progress-bar").style.width = `${(done / TESTS.length) * 100}%`;
+  $("#progress-bar").style.width = `${(done / QUESTIONS.length) * 100}%`;
 }
-
-async function runQuiz() {
-  const results = [];
+ 
+function startQuiz() {
+  answers = new Array(QUESTIONS.length).fill(null);
+  current = 0;
   showScreen("screen-test");
-  const stage = $("#stage");
-
-  for (let i = 0; i < TESTS.length; i++) {
-    const test = TESTS[i];
-    setProgress(i);
-    $("#test-step").textContent = `Épreuve ${i + 1} / ${TESTS.length}`;
-    $("#test-title").textContent = test.title;
-    $("#test-instructions").textContent = test.instructions;
-
-    await waitForGo(stage);
-    const { score, detail } = await test.run(stage);
-    results.push({ title: test.title, score: Math.round(score), detail });
-  }
-
-  setProgress(TESTS.length);
-  showResults(results);
+  renderQuestion();
 }
-
-function showResults(results) {
-  const score = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length);
+ 
+function renderQuestion() {
+  const q = QUESTIONS[current];
+  const cat = CATEGORIES[q.catIndex];
+  $("#test-step").textContent = `Question ${current + 1} / ${QUESTIONS.length}`;
+  $("#test-title").textContent = `${cat.emoji} ${cat.title}`;
+  $("#test-instructions").textContent = cat.intro;
+  $("#question-text").textContent = q.text;
+  $("#back-btn").disabled = current === 0;
+  setProgress(current);
+}
+ 
+function answer(isYes) {
+  answers[current] = isYes;
+  if (current < QUESTIONS.length - 1) {
+    current++;
+    renderQuestion();
+  } else {
+    setProgress(QUESTIONS.length);
+    showResults();
+  }
+}
+ 
+function goBack() {
+  if (current > 0) {
+    current--;
+    renderQuestion();
+  }
+}
+ 
+function showResults() {
+  const total = QUESTIONS.length;
+  const yesCount = answers.filter(Boolean).length;
+  const score = Math.round(((total - yesCount) / total) * 100);
   lastScore = score;
   const verdict = VERDICTS.find((v) => score >= v.min);
-
+ 
   $("#verdict-emoji").textContent = verdict.emoji;
   $("#verdict-title").textContent = verdict.title;
   $("#verdict-text").textContent = verdict.text;
-  $("#fake-rate").textContent = `${(((100 - score) / 100) * 2.5).toFixed(2).replace(".", ",")} g/L`;
-
+  $("#yes-count").textContent = `${yesCount} « oui » sur ${total} questions`;
+ 
   // Animation du compteur
   const scoreEl = $("#score-value");
   const startT = performance.now();
@@ -486,30 +206,42 @@ function showResults(results) {
     if (p < 1) requestAnimationFrame(animate);
   };
   requestAnimationFrame(animate);
-
-  // Jauge : plus le score est bas, plus elle se remplit vers le rouge
+ 
+  // Jauge : plus le score de pureté est bas, plus elle se remplit vers le rouge
   const gaugeFill = $("#gauge-fill");
   gaugeFill.style.width = "100%";
   requestAnimationFrame(() => requestAnimationFrame(() => {
     gaugeFill.style.width = `${score}%`;
   }));
-
-  $("#breakdown").innerHTML = results.map((r) => `
+ 
+  // Détail par catégorie
+  const perCat = CATEGORIES.map((cat, i) => {
+    const idx = QUESTIONS.map((q, n) => (q.catIndex === i ? n : -1)).filter((n) => n >= 0);
+    const yes = idx.filter((n) => answers[n]).length;
+    const pct = Math.round(((idx.length - yes) / idx.length) * 100);
+    return { cat, yes, count: idx.length, pct };
+  });
+ 
+  $("#breakdown").innerHTML = perCat.map((r) => `
     <li>
-      <strong>${r.title}</strong>
-      <span>${r.score}/100</span>
-      <div class="bd-bar"><div style="width:${r.score}%"></div></div>
-      <span class="bd-detail">${r.detail}</span>
+      <strong>${r.cat.emoji} ${r.cat.title}</strong>
+      <span>${r.pct}/100</span>
+      <div class="bd-bar"><div style="width:${r.pct}%"></div></div>
+      <span class="bd-detail">${r.yes} « oui » sur ${r.count}</span>
     </li>`).join("");
-
+ 
+  // Message d'aide si plusieurs situations à risque cochées
+  const risk = perCat.find((r) => r.cat.id === "risques");
+  $("#help-box").hidden = !(risk && risk.yes >= 4);
+ 
   renderBaseline(score);
   $("#save-baseline-btn").disabled = false;
-  $("#save-baseline-btn").textContent = "Enregistrer comme référence à jeun";
-
-  $("#result-card").classList.toggle("tipsy", score < 50);
+  $("#save-baseline-btn").textContent = "Enregistrer ce score";
+ 
+  $("#result-card").classList.toggle("tipsy", score < 35);
   showScreen("screen-result");
 }
-
+ 
 function renderBaseline(score) {
   const baseline = readBaseline();
   const box = $("#baseline-info");
@@ -519,29 +251,33 @@ function renderBaseline(score) {
   }
   const diff = score - baseline;
   let comment;
-  if (diff >= -5) comment = "Tu es au niveau de ta référence à jeun. Chapeau. 🎩";
-  else if (diff >= -15) comment = "Un peu en dessous de ta référence… fatigue ou premier verre ? 🤔";
-  else comment = "Nettement moins bien qu'à jeun. Les chiffres ne mentent pas. 🚕";
-
+  if (diff > 5) comment = "Tu es plus sage que la dernière fois. 😇";
+  else if (diff >= -5) comment = "À peu près le même niveau que ton score enregistré.";
+  else comment = "Tu as pris quelques points de « fête » depuis la dernière fois. 🍻";
+ 
   box.innerHTML = `
-    <strong>Ta référence à jeun : ${baseline}/100</strong>
+    <strong>Ton score enregistré : ${baseline}/100</strong>
     (écart : ${diff > 0 ? "+" : ""}${diff} points)<br>${comment}`;
 }
-
+ 
 // ---------- Événements ----------
 $("#promise-check").addEventListener("change", (e) => {
   $("#start-btn").disabled = !e.target.checked;
 });
-
-$("#start-btn").addEventListener("click", runQuiz);
-$("#restart-btn").addEventListener("click", runQuiz);
-
+ 
+$("#start-btn").addEventListener("click", startQuiz);
+$("#restart-btn").addEventListener("click", startQuiz);
+$("#yes-btn").addEventListener("click", () => answer(true));
+$("#no-btn").addEventListener("click", () => answer(false));
+$("#back-btn").addEventListener("click", goBack);
+ 
 $("#save-baseline-btn").addEventListener("click", (e) => {
   if (writeBaseline(lastScore)) {
-    e.target.textContent = "Référence enregistrée ✔";
+    e.target.textContent = "Score enregistré ✔";
     e.target.disabled = true;
     renderBaseline(lastScore);
   } else {
-    e.target.textContent = "Impossible d'enregistrer 😕";
+    e.target.textContent = "Impossible d’enregistrer 😕";
   }
 });
+ 
